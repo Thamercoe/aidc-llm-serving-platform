@@ -1,0 +1,29 @@
+# Everything a deploy might change, in one file. The templates read these;
+# `helm install -f` or `--set` overrides them per release.
+image: thameralotaibi/aidc-serving:cpu-v2   # cpu-v2 enforces API_KEY; cpu-v1 ignores it
+
+replicas: 1
+
+modelId: Qwen/Qwen2.5-0.5B-Instruct
+
+apiKey: ""                         # avoid: a --set literal leaks into shell history and `helm get values`
+apiKeySecret: ""                   # name of a Secret with key `api-key`; wins over apiKey. Both empty = open API with a startup warning
+
+service:
+  type: ClusterIP                  # on the GPU node: --set service.type=NodePort
+  nodePort: 30800                  # fixed: the tunnel reaches this port
+
+resources:
+  requests:
+    cpu: 250m
+    memory: 256Mi
+  limits:
+    cpu: "1"
+    memory: 5Gi
+
+hpa:
+  enabled: false                   # --set hpa.enabled=true to autoscale on CPU
+  minReplicas: 1
+  maxReplicas: 3
+  targetCPUPercent: 50
+  scaleDownStabilizationSeconds: 60   # default is 300; shortened to observe scale-in

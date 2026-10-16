@@ -1,0 +1,85 @@
+# vLLM serving Qwen2.5-1.5B-Instruct (AWQ 4-bit) on the team GPU node
+# (k3s + NVIDIA device plugin), in the `team` namespace.
+#
+# The API key Secret must exist first, in the same namespace:
+#   kubectl create secret generic serving-keys --from-literal=api-key=<key>
+#
+# The node runs k3s with `--default-runtime nvidia`. Without it the pod still
+# schedules and the GPU is debited from the node, but the container gets no
+# /dev/nvidia* devices and vLLM dies with
+# `RuntimeError: Failed to infer device type`.
+---
+# The Service must NOT be called `vllm`. Kubernetes injects a Docker-link env
+# var per Service into every pod in the namespace, so a Service named `vllm`
+# sets VLLM_PORT=tcp://10.43.x.x:8000, and vLLM reads VLLM_PORT as its own
+# integer config. The engine dies on
+# `ValueError: invalid literal for int() with base 10: 'tcp://...'`.
+# `team-serving` is also the target Prometheus scrapes.
+#
+# ClusterIP by default (in-cluster only). Go-live made it the public endpoint
+# with one patch, putting it on NodePort 30800 behind the tunnel:
+#   kubectl patch svc team-serving -p '{"spec":{"type":"NodePort","ports":[{"name":"http","port":8000,"targetPort":8000,"nodePort":30800}]}}'
+apiVersion: v1
+kind: Service
+metadata:
+  name: team-serving
+spec:
+  selector: {app: vllm}
+  ports:
+    - {name: http, port: 8000, targetPort: 8000}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: vllm
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: vllm}}
+  template:
+    metadata: {labels: {app: vllm}}
+    spec:
+      containers:
+        - name: vllm
+          # Newer engine than the T4 notebooks: this node is Ampere, and the
+          # older 0.6.x release cannot load recent model families.
+          image: vllm/vllm-openai:v0.27.1
+          args:
+            - --model=Qwen/Qwen2.5-1.5B-Instruct-AWQ
+            - --quantization=awq
+            - --dtype=half
+            - --max-model-len=4096
+            - --gpu-memory-utilization=0.85
+            - --enable-auto-tool-choice
+            - --tool-call-parser=hermes
+          ports:
+            - containerPort: 8000
+          env:
+            - name: VLLM_API_KEY
+              valueFrom:
+                secretKeyRef: {name: serving-keys, key: api-key}
+          # requests == limits on both cpu and memory gives QoS class
+          # Guaranteed; a GPU alone
+          # buys nothing, because QoS is computed from cpu and memory only.
+          # 8.7 GiB was the measured peak for a 1.5B AWQ model, most of it the
+          # CUDA context rather than weights. Raise memory for a larger lock.
+          resources:
+            requests:
+              cpu: "4"
+              memory: 16Gi
+              nvidia.com/gpu: 1
+            limits:
+              cpu: "4"
+              memory: 16Gi
+              nvidia.com/gpu: 1
+          volumeMounts:
+            - {name: hf-cache, mountPath: /root/.cache/huggingface}
+          startupProbe:               # engines load slowly; do not let liveness
+            httpGet: {path: /health, port: 8000}   # kill a model mid-download
+            periodSeconds: 10
+            failureThreshold: 60
+          readinessProbe:
+            httpGet: {path: /health, port: 8000}
+            periodSeconds: 5
+      volumes:
+        - name: hf-cache
+          hostPath: {path: /var/lib/hf-cache, type: DirectoryOrCreate}

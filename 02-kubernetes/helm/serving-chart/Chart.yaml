@@ -1,0 +1,6 @@
+apiVersion: v2
+name: serving
+description: Helm chart for the FastAPI model-serving API (Deployment, Service and an optional HPA).
+type: application
+version: 0.1.0
+appVersion: "cpu-v2"

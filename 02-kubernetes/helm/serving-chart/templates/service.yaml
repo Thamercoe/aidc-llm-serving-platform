@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Release.Name }}-serving
+spec:
+  # ClusterIP on a local kind cluster (reach it with port-forward). NodePort on
+  # the GPU node, where the tunnel is configured to reach that fixed port.
+  type: {{ .Values.service.type }}
+  selector:
+    app.kubernetes.io/name: serving
+    app.kubernetes.io/instance: {{ .Release.Name }}
+  ports:
+    - port: 8000
+      targetPort: 8000
+      {{- if eq .Values.service.type "NodePort" }}
+      nodePort: {{ .Values.service.nodePort }}
+      {{- end }}
