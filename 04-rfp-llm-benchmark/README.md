@@ -317,3 +317,7 @@ Teammates built the Streamlit frontend, the vLLM manifests, the annotation guide
 
 The RFP PDFs and raw model outputs are not included: the documents belong to the client
 and stay on the team drive.
+
+## Presentation
+
+Capstone slides: [RFP_AI_Presentation.pptx](RFP_AI_Presentation.pptx)

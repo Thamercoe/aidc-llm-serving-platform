@@ -1,0 +1,26 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+
+# Secrets: never commit keys
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+kubeconfig*
+serving-keys.yaml
+
+# Benchmark data that stays private
+04-rfp-llm-benchmark/middleware/data/
+04-rfp-llm-benchmark/middleware/eval_set/documents/
+
+# OS / editors
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
